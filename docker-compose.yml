@@ -1,0 +1,123 @@
+version: '3.8'
+
+services:
+  twatterd:
+    build:
+      context: .
+      dockerfile: ./build/twatterd/Dockerfile
+    ports:
+      - 9876:9876
+    environment:
+      DATABASE_URL: "postgresql://root@roach1:26257/twatter?sslmode=disable"
+      # TODO: add rabbitmq
+    depends_on:
+      roach1:
+        condition: service_healthy
+      roach2:
+        condition: service_healthy
+      roach-initialiser:
+        condition: service_started
+    networks:
+      - roachnet
+      - twatterd
+    restart: always
+
+      # prometheus:
+      #   condition: service_started
+      # rabbitmq:
+      #   condition: service_started
+
+  spammer:
+    build:
+      context: .
+      dockerfile: ./build/spammer/Dockerfile
+    command:
+      - -pace=1s
+      - -destination=http://twatterd:9876/add
+    depends_on:
+      twatterd:
+        condition: service_started
+    networks:
+      - twatterd
+
+  roach1:
+    image: cockroachdb/cockroach:latest
+    hostname: roach1
+    command: start --insecure --advertise-addr=roach1:26357 --http-addr=roach1:8080 --listen-addr=roach1:26357 --sql-addr=roach1:26257 --join=roach1:26357,roach2:26357
+    ports:
+      - 8080:8080
+      - 26257:26257
+    volumes:
+      - roach1-data:/cockroach/cockroach-data
+    networks:
+      roachnet:
+        aliases:
+          - roach1
+    healthcheck:
+      test: ["CMD", "cockroach", "node", "status", "--insecure", "--host=roach1:26257"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+
+  roach2:
+    image: cockroachdb/cockroach:latest
+    hostname: roach2
+    command: start --insecure --advertise-addr=roach2:26357 --http-addr=roach2:8081 --listen-addr=roach2:26357 --sql-addr=roach2:26258 --join=roach1:26357,roach2:26357
+    volumes:
+      - roach2-data:/cockroach/cockroach-data
+    networks:
+      roachnet:
+        aliases:
+          - roach2
+    healthcheck:
+      test: ["CMD", "cockroach", "node", "status", "--insecure", "--host=roach1:26257"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  roach-initialiser:
+    image: cockroachdb/cockroach:latest
+    depends_on:
+      roach1:
+        condition: service_started
+      roach2:
+        condition: service_started
+    networks:
+      - roachnet
+    volumes:
+      - ./scripts/setup_db.sh:/setup_db.sh  
+      - ./scripts/sql-init.d:/docker-entrypoint-initdb.d
+    command:
+      - "shell" 
+      - "/setup_db.sh"
+      - "roach1:26357"
+      - "roach1:26257"
+
+  # rabbitmq:
+  #   image: rabbitmq:3.11.10-management-alpine
+  #   ports:
+  #     - "5672:5672"
+  #     - "15672:15672"
+
+  # prometheus:
+  #   image: prom/prometheus
+  #   ports:
+  #     - 9090:9090
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ./docs/prometheus.yml:/etc/prometheus/prometheus.yml
+  #   command:
+  #     - --config.file=/etc/prometheus/prometheus.yml
+
+networks:
+  roachnet:
+    driver: bridge
+  twatterd:
+    driver: bridge
+
+volumes:
+  roach1-data:
+  roach2-data:

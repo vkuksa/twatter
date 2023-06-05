@@ -1,0 +1,16 @@
+linters:
+  enable:
+    - gocyclo
+    - revive
+    - govet
+    - staticcheck
+    - unused
+
+
+linters-settings:
+  unused:
+    check-exported: true
+    check-testfiles: true
+
+
+issues-exit-code: 1

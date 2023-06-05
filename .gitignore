@@ -1,0 +1,8 @@
+# VSCode-related files
+.vscode
+
+# Directory with binaries
+bin/*
+
+# Data storage of cockroach
+data/*
