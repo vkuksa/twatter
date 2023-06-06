@@ -51,10 +51,10 @@ func sendHTTPRequest(address, value string) error {
 	defer resp.Body.Close()
 
 	// Check the response status code and handle accordingly
-	if resp.StatusCode != http.StatusCreated {
+	if resp.StatusCode != http.StatusAccepted {
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	fmt.Println("Request sent with value:", value)
+	log.Println("Request sent with value:", value)
 	return nil
 }

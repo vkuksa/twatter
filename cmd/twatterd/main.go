@@ -17,7 +17,7 @@ import (
 
 	"github.com/vkuksa/twatter/internal/handlers"
 	"github.com/vkuksa/twatter/internal/livefeed"
-	"github.com/vkuksa/twatter/internal/rabbitmq"
+	"github.com/vkuksa/twatter/internal/queue/bpkafka"
 	"github.com/vkuksa/twatter/internal/storage/cockroachdb"
 )
 
@@ -25,13 +25,17 @@ const (
 	DefaultShutdownTimeout = 10
 )
 
-func main() {
-	var address string
+var (
+	addr    string
+	workers int
+)
 
-	flag.StringVar(&address, "address", ":9876", "HTTP Server Address")
+func main() {
+	flag.StringVar(&addr, "addr", ":9876", "HTTP Server Address")
+	flag.IntVar(&workers, "workers", 4, "HTTP Server Address")
 	flag.Parse()
 
-	errC, err := run(address)
+	errC, err := run(addr)
 	if err != nil {
 		log.Fatalf("Couldn't run: %s", err)
 	}
@@ -42,9 +46,14 @@ func main() {
 }
 
 func run(address string) (<-chan error, error) {
-	logger, err := zap.NewProduction()
-	if err != nil {
-		return nil, fmt.Errorf("zap.NewProduction %w", err)
+	ctx, stop := signal.NotifyContext(context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+		syscall.SIGQUIT)
+
+	logger := zap.Must(zap.NewProduction())
+	if os.Getenv("APP_ENV") == "development" {
+		logger = zap.Must(zap.NewDevelopment())
 	}
 
 	logging := func(h http.Handler) http.Handler {
@@ -58,36 +67,32 @@ func run(address string) (<-chan error, error) {
 		})
 	}
 
-	// // TODO: think how to pass environments here
-	// rmq, err := rabbitmq.NewQueue()
-	// if err != nil {
-	// 	return nil, fmt.Errorf("rabbitmq.NewQueue %w", err)
-	// }
-
-	// TODO: add services initialisation here
-	// Prometheus
-
-	dbClient, err := cockroachdb.NewClient()
+	storage, err := cockroachdb.NewMessageStore()
 	if err != nil {
 		return nil, fmt.Errorf("cockroachdb.NewClient: %w", err)
 	}
+
+	notifier := livefeed.NewMessageAddedNotifier()
+
+	queue, err := bpkafka.NewBackpressureQueue(ctx, logger, storage, notifier, os.Getenv("KAFKA_ADDR"), workers)
+	if err != nil {
+		return nil, fmt.Errorf("bpkafka.NewQueue: %w", err)
+	}
+
+	service := livefeed.NewService(storage, queue, notifier)
 
 	srv, err := newServer(serverConfig{
 		Address:     address,
 		Middlewares: []func(next http.Handler) http.Handler{logging, middleware.Recoverer},
 		Logger:      logger,
-		DBClient:    dbClient,
+		Storage:     storage,
+		Service:     service,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("NewServer: %w", err)
 	}
 
 	errC := make(chan error, 1)
-
-	ctx, stop := signal.NotifyContext(context.Background(),
-		os.Interrupt,
-		syscall.SIGTERM,
-		syscall.SIGQUIT)
 
 	go func() {
 		<-ctx.Done()
@@ -97,9 +102,9 @@ func run(address string) (<-chan error, error) {
 		ctxTimeout, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 
 		defer func() {
+			queue.Shutdown()
+			storage.Close()
 			_ = logger.Sync()
-			// dbconn.Close()	//TODO: modify for cockroach
-			// rmq.Close()
 			stop()
 			cancel()
 			close(errC)
@@ -115,6 +120,8 @@ func run(address string) (<-chan error, error) {
 	}()
 
 	go func() {
+		queue.Start()
+
 		logger.Info("Listening and serving", zap.String("address", address))
 
 		// "ListenAndServe always returns a non-nil error. After Shutdown or Close, the returned error is
@@ -131,8 +138,8 @@ type serverConfig struct {
 	Address     string
 	Middlewares []func(next http.Handler) http.Handler
 	Logger      *zap.Logger
-	DBClient    *cockroachdb.Client
-	Queue       *rabbitmq.Queue
+	Storage     *cockroachdb.MessageStore
+	Service     *livefeed.MessageService
 }
 
 func newServer(conf serverConfig) (*http.Server, error) {
@@ -142,11 +149,7 @@ func newServer(conf serverConfig) (*http.Server, error) {
 		router.Use(mw)
 	}
 
-	//TODO: prometheus handlers?
-
-	svc := livefeed.NewService(conf.Logger, conf.DBClient) //, conf.Queue)
-
-	handlers.NewMessageHandler(svc).Register(router)
+	handlers.NewMessageHandler(conf.Logger, conf.Service).Register(router)
 
 	return &http.Server{
 		Handler: router,

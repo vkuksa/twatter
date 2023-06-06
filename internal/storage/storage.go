@@ -1,13 +1,10 @@
-package storage
+package msgstor
 
-import (
-	"errors"
-)
+import "github.com/vkuksa/twatter/internal"
 
-func ValidateKey(key string) error {
-	if key == "" {
-		return errors.New("Empty key provided")
-	}
+// Represents a message storage in a system
+type Storage interface {
+	InsertMessage(msg string) (internal.Message, error)
 
-	return nil
+	GetStoredMessages() ([]internal.Message, error)
 }

@@ -5,11 +5,15 @@ services:
     build:
       context: .
       dockerfile: ./build/twatterd/Dockerfile
+    command: 
+      - -addr=:9876
+      - -workers=4
     ports:
       - 9876:9876
     environment:
+      APP_ENV: "development"
       DATABASE_URL: "postgresql://root@roach1:26257/twatter?sslmode=disable"
-      # TODO: add rabbitmq
+      KAFKA_ADDR: "kafka:9092"
     depends_on:
       roach1:
         condition: service_healthy
@@ -17,28 +21,26 @@ services:
         condition: service_healthy
       roach-initialiser:
         condition: service_started
+      kafka:
+        condition: service_started
     networks:
       - roachnet
       - twatterd
     restart: always
-
-      # prometheus:
-      #   condition: service_started
-      # rabbitmq:
-      #   condition: service_started
 
   spammer:
     build:
       context: .
       dockerfile: ./build/spammer/Dockerfile
     command:
-      - -pace=1s
+      - -pace=5s
       - -destination=http://twatterd:9876/add
     depends_on:
       twatterd:
         condition: service_started
     networks:
       - twatterd
+    restart: always
 
   roach1:
     image: cockroachdb/cockroach:latest
@@ -55,7 +57,7 @@ services:
           - roach1
     healthcheck:
       test: ["CMD", "cockroach", "node", "status", "--insecure", "--host=roach1:26257"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
       retries: 10
       start_period: 5s
@@ -73,7 +75,7 @@ services:
           - roach2
     healthcheck:
       test: ["CMD", "cockroach", "node", "status", "--insecure", "--host=roach1:26257"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
       retries: 10
       start_period: 5s
@@ -96,26 +98,35 @@ services:
       - "roach1:26357"
       - "roach1:26257"
 
-  # rabbitmq:
-  #   image: rabbitmq:3.11.10-management-alpine
-  #   ports:
-  #     - "5672:5672"
-  #     - "15672:15672"
+  zookeeper:
+    image: confluentinc/cp-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    networks:
+      - kafka
 
-  # prometheus:
-  #   image: prom/prometheus
-  #   ports:
-  #     - 9090:9090
-  #   restart: unless-stopped
-  #   volumes:
-  #     - ./docs/prometheus.yml:/etc/prometheus/prometheus.yml
-  #   command:
-  #     - --config.file=/etc/prometheus/prometheus.yml
+  kafka:
+    image: confluentinc/cp-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - twatterd
+      - kafka
 
 networks:
   roachnet:
     driver: bridge
   twatterd:
+    driver: bridge
+  kafka:
     driver: bridge
 
 volumes:

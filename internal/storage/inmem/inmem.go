@@ -4,43 +4,48 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/vkuksa/twatter/internal"
 )
 
-type Storage[V any] struct {
+type Store[V any] struct {
 	mut sync.RWMutex
 	m   map[string][]byte
 }
 
-func NewStorage[V any]() *Storage[V] {
-	return &Storage[V]{m: make(map[string][]byte)}
+func NewStore[V any]() *Store[V] {
+	return &Store[V]{m: make(map[string][]byte)}
 }
 
-// Saves data into in-memory storage
+func NewMessageStore() *Store[internal.Message] {
+	return &Store[internal.Message]{m: make(map[string][]byte)}
+}
+
+// Saves data into in-memory Store
 // Returns an error, if given key is not valid or value can not be marshalled to json
-func (s *Storage[V]) Insert(msg internal.Message) error {
+func (s *Store[V]) Insert(content string) (internal.Message, error) {
 	id, err := uuid.NewRandom()
 	if err != nil {
-		return err
+		return internal.Message{}, err
 	}
+	msg := internal.Message{ID: id.String(), Content: content, CreatedAt: time.Now()}
 
-	msg.ID = id.String()
 	data, err := json.Marshal(msg)
 	if err != nil {
-		return fmt.Errorf("set: %w", err)
+		return msg, fmt.Errorf("set: %w", err)
 	}
 
 	s.mut.Lock()
 	defer s.mut.Unlock()
 	s.m[msg.ID] = data
-	return nil
+	return msg, nil
 }
 
 // Retrieves all stored values of map
 // Returns resulting collection and an error, if an error occured during unmarshalling
-func (s *Storage[V]) GetAll() ([]V, error) {
+func (s *Store[V]) GetAll() ([]V, error) {
 	s.mut.RLock()
 	result := make([]V, 0, len(s.m))
 

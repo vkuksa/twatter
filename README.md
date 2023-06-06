@@ -23,7 +23,7 @@ Spammer is a bot, which connects to twatterd and generates messages, that popula
 
 There were no REST guidelines used for this task. Endpoints are strictly matching task  
 
-# Usage
+# Setup
 
 ## From scratch only with docker
 Navigate to scripts/ folder of this repository and download install_and_run.sh script

@@ -4,9 +4,9 @@ FROM golang:1.20.4-alpine3.17 AS build-stage
 
 WORKDIR /build/
 
-COPY . .
+COPY ./cmd/spammer/ . 
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o ./spammer ./cmd/spammer/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o ./spammer ./main.go
 
 #-
 

@@ -7,21 +7,24 @@ import (
 	"github.com/go-chi/chi"
 	"github.com/go-chi/render"
 	"github.com/vkuksa/twatter/internal"
+	"go.uber.org/zap"
 )
 
 type MessageService interface {
-	Add(ctx context.Context, content string) (internal.Message, error)
+	AddMessage(ctx context.Context, content string)
 
-	GenerateFeed(ctx context.Context) (chan internal.Message, error)
+	GenerateMessageFeed(ctx context.Context) (chan internal.Message, error)
 }
 
 type MessageHandler struct {
-	svc MessageService
+	logger *zap.Logger
+	svc    MessageService
 }
 
-func NewMessageHandler(svc MessageService) *MessageHandler {
+func NewMessageHandler(l *zap.Logger, svc MessageService) *MessageHandler {
 	return &MessageHandler{
-		svc: svc,
+		logger: l,
+		svc:    svc,
 	}
 }
 
@@ -32,14 +35,8 @@ func (m *MessageHandler) Register(r *chi.Mux) {
 
 func (m *MessageHandler) handleAdd(w http.ResponseWriter, r *http.Request) {
 	content := r.PostFormValue("content")
-	msg, err := m.svc.Add(r.Context(), content)
-	if err != nil {
-		renderErrorResponse(w, r, "add failed", err)
-		return
-	}
-
-	render.Status(r, http.StatusCreated)
-	render.HTML(w, r, msg.String())
+	m.svc.AddMessage(r.Context(), content)
+	w.WriteHeader(http.StatusAccepted)
 }
 
 func (m *MessageHandler) handleFeed(w http.ResponseWriter, r *http.Request) {
@@ -49,8 +46,9 @@ func (m *MessageHandler) handleFeed(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Transfer-Encoding", "chunked")
 
-	msgChan, err := m.svc.GenerateFeed(r.Context())
+	msgChan, err := m.svc.GenerateMessageFeed(r.Context())
 	if err != nil {
+		m.logger.Error(err.Error())
 		renderErrorResponse(w, r, "feed streaming failed", err)
 		return
 	}
@@ -58,7 +56,9 @@ func (m *MessageHandler) handleFeed(w http.ResponseWriter, r *http.Request) {
 	for msg := range msgChan {
 		_, err = w.Write([]byte(msg.String()))
 		if err != nil {
+			m.logger.Error(err.Error())
 			renderErrorResponse(w, r, "feed streaming failed", err)
+			return
 		}
 
 		// Flush the response writer to ensure the event is sent immediately
