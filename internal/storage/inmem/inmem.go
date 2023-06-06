@@ -25,12 +25,14 @@ func NewMessageStore() *Store[internal.Message] {
 
 // Saves data into in-memory Store
 // Returns an error, if given key is not valid or value can not be marshalled to json
-func (s *Store[V]) Insert(content string) (internal.Message, error) {
+func (s *Store[V]) InsertMessage(content string) (internal.Message, error) {
+	msg := internal.Message{Content: content, CreatedAt: time.Now()}
 	id, err := uuid.NewRandom()
 	if err != nil {
 		return internal.Message{}, err
+	} else {
+		msg.ID = id.String()
 	}
-	msg := internal.Message{ID: id.String(), Content: content, CreatedAt: time.Now()}
 
 	data, err := json.Marshal(msg)
 	if err != nil {
@@ -45,7 +47,7 @@ func (s *Store[V]) Insert(content string) (internal.Message, error) {
 
 // Retrieves all stored values of map
 // Returns resulting collection and an error, if an error occured during unmarshalling
-func (s *Store[V]) GetAll() ([]V, error) {
+func (s *Store[V]) GetStoredMessages() ([]V, error) {
 	s.mut.RLock()
 	result := make([]V, 0, len(s.m))
 
@@ -59,4 +61,18 @@ func (s *Store[V]) GetAll() ([]V, error) {
 	s.mut.RUnlock()
 
 	return result, nil
+}
+
+// MutateStore modifies the internal map of the Store for testing purposes.
+// It takes a map of message IDs to serialized message data and updates the store accordingly.
+func (s *Store[V]) mutateStore(data map[string][]byte) error {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+
+	// Iterate over the provided data and update the store's map
+	for id, serializedData := range data {
+		s.m[id] = serializedData
+	}
+
+	return nil
 }
