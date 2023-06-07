@@ -2,6 +2,7 @@ package cockroachdb
 
 import (
 	"database/sql"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,7 +11,7 @@ import (
 
 // ! Requires cockroach db node running on environment
 func MustOpenDB(t *testing.T) *sql.DB {
-	db, err := sql.Open("postgres", "postgresql://root@roach1:26257/defaultdb?sslmode=disable")
+	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
 	if err != nil {
 		t.Fatalf("failed to connect to database: %v", err)
 	}

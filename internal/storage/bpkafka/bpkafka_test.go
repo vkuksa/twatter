@@ -2,6 +2,7 @@ package bpkafka
 
 import (
 	"context"
+	"os"
 	"runtime"
 	"testing"
 	"time"
@@ -55,7 +56,7 @@ func TestEnqueue(t *testing.T) {
 	mockNotifier := new(MockEventNotifier)
 
 	// Create a new queue
-	queue, err := NewBackpressureQueue(context.Background(), zap.NewNop(), mockStorage, "", 1)
+	queue, err := NewBackpressureQueue(context.Background(), zap.NewNop(), mockStorage, os.Getenv("KAFKA_ADDR"), 1)
 	assert.NoError(t, err)
 
 	// Set notifier
@@ -76,7 +77,7 @@ func TestStart(t *testing.T) {
 	mockStorage := new(MockStorage)
 
 	// Create a new queue
-	queue, err := NewBackpressureQueue(context.Background(), zap.NewNop(), mockStorage, "", 1)
+	queue, err := NewBackpressureQueue(context.Background(), zap.NewNop(), mockStorage, os.Getenv("KAFKA_ADDR"), 1)
 	assert.NoError(t, err)
 
 	// Start the queue

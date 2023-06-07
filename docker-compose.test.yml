@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  twatterd-test:
+    build:
+      context: .
+      dockerfile: ./build/twatterd/Dockerfile.test
+    volumes:
+      - $PWD:/go/src/github.com/vkuksa/twatter
+    environment:
+      APP_ENV: "integration-test"
+      DATABASE_URL: "postgresql://root@roach:26257/defaultdb?sslmode=disable"
+      KAFKA_ADDR: "kafka:9092"
+    depends_on:
+      roach-test:
+        condition: service_healthy
+      kafka-test:
+        condition: service_started
+    networks:
+      - twatter-test
+    restart: always
+
+  roach-test:
+    image: cockroachdb/cockroach:latest
+    hostname: roach
+    command: start --insecure --advertise-addr=roach:26357 --http-addr=roach:8080 --listen-addr=roach:26357 --sql-addr=roach:26257 --join=roach:26357 
+    ports:
+      - 8080:8080
+      - 26257:26257
+    volumes:
+      - roach-data:/cockroach/cockroach-data
+    networks:
+      - twatter-test
+    healthcheck:
+      test: ["CMD", "cockroach", "node", "status", "--insecure", "--host=roach:26257"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  zookeeper-test:
+    hostname: zookeeper
+    image: confluentinc/cp-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    networks:
+      - twatter-test
+
+  kafka-test:
+    hostname: kafka
+    image: confluentinc/cp-kafka
+    depends_on:
+      - zookeeper-test
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - twatter-test
+
+networks:
+  twatter-test:
+    driver: bridge
+
+volumes:
+  roach-data:
