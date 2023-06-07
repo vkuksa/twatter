@@ -1,6 +1,8 @@
 package livefeed
 
 import (
+	"time"
+
 	"github.com/vkuksa/twatter/internal"
 )
 
@@ -16,22 +18,22 @@ type EventNotifier interface {
 	Notify(internal.Message)
 }
 
-// TODO: namings
-type MessageAdded struct {
+// Represents concrete
+type ObserverNotifier struct {
 	observers []Observer
 }
 
-func NewMessageAddedNotifier() EventNotifier {
-	return &MessageAdded{observers: make([]Observer, 0)}
+func NewObserverNotifier() *ObserverNotifier {
+	return &ObserverNotifier{observers: make([]Observer, 0)}
 }
 
 // RegisterObserver adds an observer to the list of observers.
-func (s *MessageAdded) RegisterObserver(observer Observer) {
+func (s *ObserverNotifier) RegisterObserver(observer Observer) {
 	s.observers = append(s.observers, observer)
 }
 
 // RemoveObserver removes an observer from the list of observers.
-func (s *MessageAdded) RemoveObserver(observer Observer) {
+func (s *ObserverNotifier) RemoveObserver(observer Observer) {
 	for i, obs := range s.observers {
 		if obs == observer {
 			s.observers = append(s.observers[:i], s.observers[i+1:]...)
@@ -41,13 +43,12 @@ func (s *MessageAdded) RemoveObserver(observer Observer) {
 }
 
 // NotifyObservers notifies all observers with the given message.
-func (s *MessageAdded) Notify(msg internal.Message) {
+func (s *ObserverNotifier) Notify(msg internal.Message) {
 	for _, observer := range s.observers {
 		observer.Update(msg)
 	}
 }
 
-// TODO: think of this interfaces
 // MessageAddedObserver represents a concrete observer that should signal when message being added
 type MessageAddedObserver chan internal.Message
 
@@ -55,7 +56,8 @@ type MessageAddedObserver chan internal.Message
 func (o *MessageAddedObserver) Update(m internal.Message) {
 	select {
 	case *o <- m:
-	default:
+	case <-time.After(1 * time.Second):
+		return
 		// Case protecting from race condition, where client will not be able to read a message, but observer was not removed from the list and was notified
 	}
 }

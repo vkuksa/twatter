@@ -77,7 +77,7 @@ func run(address string) (<-chan error, error) {
 		return nil, fmt.Errorf("bpkafka.NewQueue: %w", err)
 	}
 
-	service := livefeed.NewMessageService(queue)
+	service := livefeed.NewMessageService(ctx, queue)
 
 	srv, err := newServer(serverConfig{
 		Address:     address,

@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi"
-	"github.com/go-chi/render"
 	"github.com/vkuksa/twatter/internal"
 	"go.uber.org/zap"
 )
@@ -46,24 +45,47 @@ func (m *MessageHandler) handleFeed(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Transfer-Encoding", "chunked")
 
-	msgChan, err := m.svc.GenerateMessageFeed(r.Context())
+	// Create a context for the message feed generation
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel() // Make sure to cancel the context when the handler exits
+
+	msgChan, err := m.svc.GenerateMessageFeed(ctx)
 	if err != nil {
 		m.logger.Error("Failed message feed generation", zap.Error(err))
 		renderErrorResponse(w, r, "feed streaming failed", err)
 		return
 	}
 
-	for msg := range msgChan {
-		_, err = w.Write([]byte(msg.String()))
-		if err != nil {
-			m.logger.Error("Failed feed streaming of messages", zap.Error(err))
-			renderErrorResponse(w, r, "feed streaming failed", err)
-			return
-		}
-
-		// Flush the response writer to ensure the event is sent immediately
-		w.(http.Flusher).Flush()
+	// Check if the underlying connection supports the CloseNotifier interface
+	closeNotifier, ok := w.(http.CloseNotifier)
+	if !ok {
+		m.logger.Warn("Closenotify not supported")
 	}
 
-	render.Status(r, http.StatusOK)
+	for {
+		defer cancel()
+
+		select {
+		case msg, ok := <-msgChan:
+			if !ok {
+				// msgChan closed
+				return
+			}
+			m.logger.Debug("Received feed message", zap.String("content", msg.Content))
+
+			_, err = w.Write([]byte(msg.String()))
+			if err != nil {
+				m.logger.Error("Failed feed streaming of messages", zap.Error(err))
+				renderErrorResponse(w, r, "feed streaming failed", err)
+				return
+			}
+
+			// Flush the response writer to ensure the event is sent immediately
+			w.(http.Flusher).Flush()
+		case <-r.Context().Done():
+			return
+		case <-closeNotifier.CloseNotify():
+			return
+		}
+	}
 }

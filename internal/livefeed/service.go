@@ -7,15 +7,17 @@ import (
 	"github.com/vkuksa/twatter/internal"
 )
 
-// Represents an interface for inserting messages to storage
+// Represents an interface for message inserter
 type MessageInserter interface {
 	InsertMessage(context.Context, string)
 }
 
+// Represents an interface for message retriever
 type MessageRetriever interface {
 	RetrieveAllMessages() ([]internal.Message, error)
 }
 
+// Represents an interface for notifying about creation of message through passed notifier
 type MessageAddedNotifier interface {
 	SetMessageAddedNotifier(EventNotifier)
 }
@@ -31,14 +33,16 @@ type MessageInserterRetrieverNotifier interface {
 type MessageService struct {
 	msgStorage       MessageInserterRetrieverNotifier
 	msgAddedNotifier EventNotifier
+
+	ctx context.Context
 }
 
 // Returns new instance of MessageService
 // Parameters: interface of storage implementing required behavioural interfaces
-func NewMessageService(irn MessageInserterRetrieverNotifier) *MessageService {
-	notifier := NewMessageAddedNotifier()
+func NewMessageService(ctx context.Context, irn MessageInserterRetrieverNotifier) *MessageService {
+	notifier := NewObserverNotifier()
 	irn.SetMessageAddedNotifier(notifier)
-	return &MessageService{msgStorage: irn, msgAddedNotifier: notifier}
+	return &MessageService{ctx: ctx, msgStorage: irn, msgAddedNotifier: notifier}
 }
 
 // Adds message for storing by queue
@@ -48,7 +52,7 @@ func (s *MessageService) AddMessage(ctx context.Context, msg string) {
 
 // Retuns a message feed, consisting of previously stored messages from storage and new messages, that are stored during streaming
 // Streaming new messages gives the live feed effect
-func (s *MessageService) GenerateMessageFeed(ctx context.Context) (chan internal.Message, error) {
+func (s *MessageService) GenerateMessageFeed(reqCtx context.Context) (chan internal.Message, error) {
 	storedMessages, err := s.msgStorage.RetrieveAllMessages()
 	if err != nil {
 		return nil, fmt.Errorf("getfeed: %w", err)
@@ -60,18 +64,41 @@ func (s *MessageService) GenerateMessageFeed(ctx context.Context) (chan internal
 	s.msgAddedNotifier.RegisterObserver(&addedMessage)
 
 	go func() {
-		defer close(msgChan)
-		defer s.msgAddedNotifier.RemoveObserver(&addedMessage)
+		defer func() {
+			s.msgAddedNotifier.RemoveObserver(&addedMessage)
+			close(msgChan)
+		}()
 
 		for _, msg := range storedMessages {
-			msgChan <- msg
+			select {
+			case msgChan <- msg:
+			case <-s.ctx.Done():
+				return
+			case <-reqCtx.Done():
+				return
+			}
 		}
 
 		for {
 			select {
-			case <-ctx.Done():
+			case <-s.ctx.Done():
 				return
-			case msgChan <- <-addedMessage:
+			case <-reqCtx.Done():
+				return
+			case msg, ok := <-addedMessage:
+				// We are notified that message is added
+				if !ok {
+					return
+				}
+
+				select {
+				// Passing the message to next receiver
+				case msgChan <- msg:
+				case <-s.ctx.Done():
+					return
+				case <-reqCtx.Done():
+					return
+				}
 			}
 		}
 	}()
