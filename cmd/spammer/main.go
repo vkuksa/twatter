@@ -39,22 +39,28 @@ func generateRandomString() string {
 	return string(b)
 }
 
-// sendHTTPRequest sends an HTTP POST request with the given value
 func sendHTTPRequest(address, value string) error {
 	formData := url.Values{}
 	formData.Set("content", value)
 
-	resp, err := http.PostForm(address, formData)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
+	retryCount := 0
+	maxRetries := 5
 
-	// Check the response status code and handle accordingly
-	if resp.StatusCode != http.StatusAccepted {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	for retryCount < maxRetries {
+		resp, err := http.PostForm(address, formData)
+		if err != nil {
+			log.Printf("Request failed: %v", err)
+		} else if resp.StatusCode != http.StatusAccepted {
+			log.Printf("Unexpected status code: %d", resp.StatusCode)
+		} else {
+			log.Println("Request sent with value:", value)
+			return nil
+		}
+
+		retryCount++
+		log.Printf("Retrying in 5 seconds (retry %d/%d)...", retryCount, maxRetries)
+		time.Sleep(5 * time.Second)
 	}
 
-	log.Println("Request sent with value:", value)
-	return nil
+	return fmt.Errorf("failed to send request after %d retries", maxRetries)
 }

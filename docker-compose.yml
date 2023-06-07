@@ -40,7 +40,6 @@ services:
         condition: service_started
     networks:
       - twatterd
-    restart: always
 
   roach1:
     image: cockroachdb/cockroach:latest
