@@ -44,7 +44,7 @@ func (s *MessageStore) InsertMessage(content string) (internal.Message, error) {
 }
 
 // Retrieves all stored messages from database
-func (s *MessageStore) GetStoredMessages() ([]internal.Message, error) {
+func (s *MessageStore) RetrieveAllMessages() ([]internal.Message, error) {
 	rows, err := s.db.Query("SELECT id, content, created_at FROM messages ORDER BY created_at ASC")
 	defer rows.Close()
 	if err != nil {

@@ -23,7 +23,7 @@ func (m *MockStorage) InsertMessage(msg string) (internal.Message, error) {
 	return args.Get(0).(internal.Message), args.Error(1)
 }
 
-func (m *MockStorage) GetStoredMessages() ([]internal.Message, error) {
+func (m *MockStorage) RetrieveAllMessages() ([]internal.Message, error) {
 	args := m.Called()
 	return args.Get(0).([]internal.Message), args.Error(1)
 }
@@ -55,11 +55,14 @@ func TestEnqueue(t *testing.T) {
 	mockNotifier := new(MockEventNotifier)
 
 	// Create a new queue
-	queue, err := NewBackpressureQueue(context.Background(), zap.NewNop(), mockStorage, mockNotifier, "", 1)
+	queue, err := NewBackpressureQueue(context.Background(), zap.NewNop(), mockStorage, "", 1)
 	assert.NoError(t, err)
 
+	// Set notifier
+	queue.SetMessageAddedNotifier(mockNotifier)
+
 	// Enqueue a message
-	queue.Enqueue(context.Background(), "test message")
+	queue.InsertMessage(context.Background(), "test message")
 
 	// Assert that the storage's InsertMessage method was called
 	mockStorage.AssertCalled(t, "InsertMessage", "test message")
@@ -72,11 +75,8 @@ func TestStart(t *testing.T) {
 	// Create a mock storage
 	mockStorage := new(MockStorage)
 
-	// Create a mock event notifier
-	mockNotifier := new(MockEventNotifier)
-
 	// Create a new queue
-	queue, err := NewBackpressureQueue(context.Background(), zap.NewNop(), mockStorage, mockNotifier, "", 1)
+	queue, err := NewBackpressureQueue(context.Background(), zap.NewNop(), mockStorage, "", 1)
 	assert.NoError(t, err)
 
 	// Start the queue

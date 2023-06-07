@@ -16,7 +16,7 @@ type EventNotifier interface {
 	Notify(internal.Message)
 }
 
-// MessageAdded represents a concrete subject that implements the Subject interface.
+// TODO: namings
 type MessageAdded struct {
 	observers []Observer
 }

@@ -42,7 +42,7 @@ func MustOpenDB(t *testing.T) *sql.DB {
 	return db
 }
 
-func TestMessageStore_InsertAndGetAll(t *testing.T) {
+func TestMessageStore_InsertAndRetrieveAll(t *testing.T) {
 	db := MustOpenDB(t)
 	defer db.Close()
 
@@ -71,7 +71,7 @@ func TestMessageStore_InsertAndGetAll(t *testing.T) {
 	assert.Equal(t, expectedMsg, msg, "inserted message does not match expected")
 
 	// Retrieve all stored messages
-	msgs, err := store.GetStoredMessages()
+	msgs, err := store.RetrieveAllMessages()
 	if err != nil {
 		t.Fatalf("failed to retrieve stored messages: %v", err)
 	}

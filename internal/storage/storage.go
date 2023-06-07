@@ -6,5 +6,5 @@ import "github.com/vkuksa/twatter/internal"
 type Storage interface {
 	InsertMessage(msg string) (internal.Message, error)
 
-	GetStoredMessages() ([]internal.Message, error)
+	RetrieveAllMessages() ([]internal.Message, error)
 }

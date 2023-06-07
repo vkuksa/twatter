@@ -17,12 +17,12 @@ import (
 
 	"github.com/vkuksa/twatter/internal/handlers"
 	"github.com/vkuksa/twatter/internal/livefeed"
-	"github.com/vkuksa/twatter/internal/queue/bpkafka"
+	"github.com/vkuksa/twatter/internal/storage/bpkafka"
 	"github.com/vkuksa/twatter/internal/storage/cockroachdb"
 )
 
 const (
-	DefaultShutdownTimeout = 10
+	DefaultShutdownTimeout = 3 * time.Second
 )
 
 var (
@@ -72,20 +72,17 @@ func run(address string) (<-chan error, error) {
 		return nil, fmt.Errorf("cockroachdb.NewClient: %w", err)
 	}
 
-	notifier := livefeed.NewMessageAddedNotifier()
-
-	queue, err := bpkafka.NewBackpressureQueue(ctx, logger, storage, notifier, os.Getenv("KAFKA_ADDR"), workers)
+	queue, err := bpkafka.NewBackpressureQueue(ctx, logger, storage, os.Getenv("KAFKA_ADDR"), workers)
 	if err != nil {
 		return nil, fmt.Errorf("bpkafka.NewQueue: %w", err)
 	}
 
-	service := livefeed.NewMessageService(storage, queue, notifier)
+	service := livefeed.NewMessageService(queue)
 
 	srv, err := newServer(serverConfig{
 		Address:     address,
 		Middlewares: []func(next http.Handler) http.Handler{logging, middleware.Recoverer},
 		Logger:      logger,
-		Storage:     storage,
 		Service:     service,
 	})
 	if err != nil {
@@ -99,7 +96,7 @@ func run(address string) (<-chan error, error) {
 
 		logger.Info("Shutdown signal received")
 
-		ctxTimeout, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctxTimeout, cancel := context.WithTimeout(context.Background(), DefaultShutdownTimeout)
 
 		defer func() {
 			queue.Shutdown()
@@ -138,7 +135,6 @@ type serverConfig struct {
 	Address     string
 	Middlewares []func(next http.Handler) http.Handler
 	Logger      *zap.Logger
-	Storage     *cockroachdb.MessageStore
 	Service     *livefeed.MessageService
 }
 

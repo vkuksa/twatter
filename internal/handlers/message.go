@@ -48,7 +48,7 @@ func (m *MessageHandler) handleFeed(w http.ResponseWriter, r *http.Request) {
 
 	msgChan, err := m.svc.GenerateMessageFeed(r.Context())
 	if err != nil {
-		m.logger.Error(err.Error())
+		m.logger.Error("Failed message feed generation", zap.Error(err))
 		renderErrorResponse(w, r, "feed streaming failed", err)
 		return
 	}
@@ -56,7 +56,7 @@ func (m *MessageHandler) handleFeed(w http.ResponseWriter, r *http.Request) {
 	for msg := range msgChan {
 		_, err = w.Write([]byte(msg.String()))
 		if err != nil {
-			m.logger.Error(err.Error())
+			m.logger.Error("Failed feed streaming of messages", zap.Error(err))
 			renderErrorResponse(w, r, "feed streaming failed", err)
 			return
 		}

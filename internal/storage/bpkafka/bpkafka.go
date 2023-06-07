@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/segmentio/kafka-go"
+	"github.com/vkuksa/twatter/internal"
 	"github.com/vkuksa/twatter/internal/livefeed"
 	msgstor "github.com/vkuksa/twatter/internal/storage"
 	"go.uber.org/zap"
@@ -35,6 +37,7 @@ type Queue struct {
 	storage          msgstor.Storage
 	msgAddedNotifier livefeed.EventNotifier
 
+	wg         sync.WaitGroup
 	writer     *kafka.Writer
 	numWorkers int
 	addr       string
@@ -45,7 +48,7 @@ type Queue struct {
 // If kafka address not specified - uses "localhost:9092"
 // If number of workers not specified - uses runtime.NumCPU()
 // Returns error if kafka dialing fails
-func NewBackpressureQueue(ctx context.Context, l *zap.Logger, s msgstor.Storage, notifier livefeed.EventNotifier, addr string, n int) (*Queue, error) {
+func NewBackpressureQueue(ctx context.Context, l *zap.Logger, s msgstor.Storage, addr string, n int) (*Queue, error) {
 	if addr == "" {
 		addr = defaultKafkaAddr
 	}
@@ -66,19 +69,26 @@ func NewBackpressureQueue(ctx context.Context, l *zap.Logger, s msgstor.Storage,
 		RequiredAcks: 1,
 	}
 
-	return &Queue{ctx: ctx, logger: l, storage: s, addr: addr, numWorkers: n, writer: w, msgAddedNotifier: notifier}, nil
+	return &Queue{ctx: ctx, logger: l, storage: s, addr: addr, numWorkers: n, writer: w}, nil
+}
+
+func (s *Queue) SetMessageAddedNotifier(en livefeed.EventNotifier) {
+	s.msgAddedNotifier = en
 }
 
 // Function starts workers, that process messages
 func (s *Queue) Start() {
 	s.logger.Debug("Starting up insertion workers", zap.Int("amount", s.numWorkers))
 	for i := 0; i < s.numWorkers; i++ {
+		s.wg.Add(1)
 		go s.insertionWorker()
 	}
 }
 
 // Worker function, that reads message from kafka stream, inserts into storage and notifies that message was inserted
 func (s *Queue) insertionWorker() {
+	defer s.wg.Done()
+
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:                []string{s.addr},
 		Topic:                  topic,
@@ -96,12 +106,12 @@ func (s *Queue) insertionWorker() {
 			return
 		}
 
-		s.logger.Debug("storage.Insert: ", zap.String("value", string(kafkaMsg.Value)))
+		s.logger.Debug("storage.Insert: ", zap.String("value", string(kafkaMsg.Value)), zap.ByteString("stack", getStackPrint()))
 		storedMsg, err := s.storage.InsertMessage(string(kafkaMsg.Value))
 		if err != nil {
 			s.logger.Error("Storage insertion failed", zap.Error(err), zap.String("value", string(kafkaMsg.Value)))
 		} else {
-			s.logger.Debug("msgAdded.Notify: ", zap.String("content", string(storedMsg.Content)))
+			s.logger.Debug("msgAdded.Notify: ", zap.String("content", string(storedMsg.Content)), zap.ByteString("stack", getStackPrint()))
 			s.msgAddedNotifier.Notify(storedMsg)
 		}
 
@@ -114,13 +124,24 @@ func (s *Queue) insertionWorker() {
 }
 
 // Adds message to kafka stream
-func (s *Queue) Enqueue(ctx context.Context, content string) {
+func (s *Queue) InsertMessage(ctx context.Context, content string) {
 	_ = s.writer.WriteMessages(ctx, kafka.Message{
 		Value: []byte(content),
 	})
 }
 
+func (s *Queue) RetrieveAllMessages() ([]internal.Message, error) {
+	return s.storage.RetrieveAllMessages()
+}
+
 // Shutdown queue
 func (s *Queue) Shutdown() {
 	s.writer.Close()
+	s.wg.Wait()
+}
+
+func getStackPrint() []byte {
+	b := make([]byte, 64)
+	b = b[:runtime.Stack(b, false)]
+	return b
 }
