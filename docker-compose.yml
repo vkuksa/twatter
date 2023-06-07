@@ -7,7 +7,7 @@ services:
       dockerfile: ./build/twatterd/Dockerfile
     command: 
       - -addr=:9876
-      - -workers=4
+      - -queue_workers=4
     ports:
       - 9876:9876
     environment:
@@ -33,7 +33,7 @@ services:
       context: .
       dockerfile: ./build/spammer/Dockerfile
     command:
-      - -pace=5s
+      - -pace=1s
       - -destination=http://twatterd:9876/add
     depends_on:
       twatterd:

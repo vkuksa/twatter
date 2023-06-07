@@ -32,7 +32,7 @@ var (
 
 func main() {
 	flag.StringVar(&addr, "addr", ":9876", "HTTP Server Address")
-	flag.IntVar(&workers, "workers", 4, "HTTP Server Address")
+	flag.IntVar(&workers, "queue_workers", 4, "Backpressure queue workers amount")
 	flag.Parse()
 
 	errC, err := run(addr)
@@ -79,7 +79,7 @@ func run(address string) (<-chan error, error) {
 		return nil, fmt.Errorf("bpkafka.NewQueue: %w", err)
 	}
 
-	service := livefeed.NewService(storage, queue, notifier)
+	service := livefeed.NewMessageService(storage, queue, notifier)
 
 	srv, err := newServer(serverConfig{
 		Address:     address,
