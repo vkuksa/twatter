@@ -44,8 +44,8 @@ type Queue struct {
 
 	wg         sync.WaitGroup
 	writer     *kafka.Writer
+	reader     *kafka.Reader
 	numWorkers int
-	addr       string
 }
 
 // Creates new instance of queue
@@ -74,7 +74,15 @@ func NewBackpressureQueue(ctx context.Context, l *zap.Logger, s MessageStore, ad
 		RequiredAcks: 1,
 	}
 
-	return &Queue{ctx: ctx, logger: l, store: s, addr: addr, numWorkers: n, writer: w}, nil
+	reader := kafka.NewReader(kafka.ReaderConfig{
+		Brokers:     []string{addr},
+		Topic:       topic,
+		GroupID:     consumerGroup,
+		Logger:      ZapLoggerWrapper{logger: l},
+		StartOffset: kafka.LastOffset,
+		MaxWait:     5 * time.Second,
+	})
+	return &Queue{ctx: ctx, logger: l, store: s, reader: reader, numWorkers: n, writer: w}, nil
 }
 
 func (s *Queue) SetMessageAddedNotifier(en livefeed.EventNotifier) {
@@ -94,18 +102,8 @@ func (s *Queue) Start() {
 func (s *Queue) insertionWorker() {
 	defer s.wg.Done()
 
-	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:                []string{s.addr},
-		Topic:                  topic,
-		GroupID:                consumerGroup,
-		StartOffset:            kafka.LastOffset,
-		PartitionWatchInterval: 1 * time.Second,
-		JoinGroupBackoff:       1 * time.Second,
-	})
-	defer reader.Close()
-
 	for {
-		kafkaMsg, err := reader.ReadMessage(s.ctx)
+		kafkaMsg, err := s.reader.ReadMessage(s.ctx)
 		if err != nil {
 			s.logger.Error(err.Error())
 			return
@@ -141,6 +139,7 @@ func (s *Queue) RetrieveAllMessages() ([]internal.Message, error) {
 
 // Shutdown queue
 func (s *Queue) Shutdown() {
+	s.reader.Close()
 	s.writer.Close()
 	s.wg.Wait()
 }

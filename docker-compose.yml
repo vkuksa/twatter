@@ -33,7 +33,7 @@ services:
       context: .
       dockerfile: ./build/spammer/Dockerfile
     command:
-      - -pace=5s
+      - -pace=1s
       - -destination=http://twatterd:9876/add
     depends_on:
       twatterd:
