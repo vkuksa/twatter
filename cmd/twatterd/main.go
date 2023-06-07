@@ -100,7 +100,7 @@ func run(address string) (<-chan error, error) {
 
 		defer func() {
 			queue.Shutdown()
-			storage.Close()
+			_ = storage.Close()
 			_ = logger.Sync()
 			stop()
 			cancel()

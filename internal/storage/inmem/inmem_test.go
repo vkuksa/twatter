@@ -36,7 +36,7 @@ func TestStore_GetStoredMessages(t *testing.T) {
 	data, err := json.Marshal(msg)
 	assert.NoError(t, err)
 
-	store.mutateStore(map[string][]byte{
+	_ = store.mutateStore(map[string][]byte{
 		"1": data,
 	})
 

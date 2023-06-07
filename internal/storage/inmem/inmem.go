@@ -30,9 +30,8 @@ func (s *Store[V]) InsertMessage(content string) (internal.Message, error) {
 	id, err := uuid.NewRandom()
 	if err != nil {
 		return internal.Message{}, err
-	} else {
-		msg.ID = id.String()
 	}
+	msg.ID = id.String()
 
 	data, err := json.Marshal(msg)
 	if err != nil {

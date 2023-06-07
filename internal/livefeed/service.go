@@ -48,8 +48,8 @@ func (s *MessageService) AddMessage(ctx context.Context, msg string) {
 
 // Retuns a message feed, consisting of previously stored messages from storage and new messages, that are stored during streaming
 // Streaming new messages gives the live feed effect
-func (svc *MessageService) GenerateMessageFeed(ctx context.Context) (chan internal.Message, error) {
-	storedMessages, err := svc.msgStorage.RetrieveAllMessages()
+func (s *MessageService) GenerateMessageFeed(ctx context.Context) (chan internal.Message, error) {
+	storedMessages, err := s.msgStorage.RetrieveAllMessages()
 	if err != nil {
 		return nil, fmt.Errorf("getfeed: %w", err)
 	}
@@ -57,11 +57,11 @@ func (svc *MessageService) GenerateMessageFeed(ctx context.Context) (chan intern
 	msgChan := make(chan internal.Message)
 
 	addedMessage := MessageAddedObserver(make(chan internal.Message))
-	svc.msgAddedNotifier.RegisterObserver(&addedMessage)
+	s.msgAddedNotifier.RegisterObserver(&addedMessage)
 
 	go func() {
 		defer close(msgChan)
-		defer svc.msgAddedNotifier.RemoveObserver(&addedMessage)
+		defer s.msgAddedNotifier.RemoveObserver(&addedMessage)
 
 		for _, msg := range storedMessages {
 			msgChan <- msg

@@ -10,7 +10,6 @@ import (
 	"github.com/segmentio/kafka-go"
 	"github.com/vkuksa/twatter/internal"
 	"github.com/vkuksa/twatter/internal/livefeed"
-	msgstor "github.com/vkuksa/twatter/internal/storage"
 	"go.uber.org/zap"
 )
 
@@ -30,11 +29,17 @@ func (w ZapLoggerWrapper) Printf(format string, args ...interface{}) {
 	w.logger.Debug(msg)
 }
 
+type MessageStore interface {
+	InsertMessage(string) (internal.Message, error)
+
+	RetrieveAllMessages() ([]internal.Message, error)
+}
+
 // Simulates backpressure balancing with a kafka streaming
 type Queue struct {
 	ctx              context.Context
 	logger           *zap.Logger
-	storage          msgstor.Storage
+	store            MessageStore
 	msgAddedNotifier livefeed.EventNotifier
 
 	wg         sync.WaitGroup
@@ -48,7 +53,7 @@ type Queue struct {
 // If kafka address not specified - uses "localhost:9092"
 // If number of workers not specified - uses runtime.NumCPU()
 // Returns error if kafka dialing fails
-func NewBackpressureQueue(ctx context.Context, l *zap.Logger, s msgstor.Storage, addr string, n int) (*Queue, error) {
+func NewBackpressureQueue(ctx context.Context, l *zap.Logger, s MessageStore, addr string, n int) (*Queue, error) {
 	if addr == "" {
 		addr = defaultKafkaAddr
 	}
@@ -69,7 +74,7 @@ func NewBackpressureQueue(ctx context.Context, l *zap.Logger, s msgstor.Storage,
 		RequiredAcks: 1,
 	}
 
-	return &Queue{ctx: ctx, logger: l, storage: s, addr: addr, numWorkers: n, writer: w}, nil
+	return &Queue{ctx: ctx, logger: l, store: s, addr: addr, numWorkers: n, writer: w}, nil
 }
 
 func (s *Queue) SetMessageAddedNotifier(en livefeed.EventNotifier) {
@@ -107,7 +112,7 @@ func (s *Queue) insertionWorker() {
 		}
 
 		s.logger.Debug("storage.Insert: ", zap.String("value", string(kafkaMsg.Value)), zap.ByteString("stack", getStackPrint()))
-		storedMsg, err := s.storage.InsertMessage(string(kafkaMsg.Value))
+		storedMsg, err := s.store.InsertMessage(string(kafkaMsg.Value))
 		if err != nil {
 			s.logger.Error("Storage insertion failed", zap.Error(err), zap.String("value", string(kafkaMsg.Value)))
 		} else {
@@ -131,7 +136,7 @@ func (s *Queue) InsertMessage(ctx context.Context, content string) {
 }
 
 func (s *Queue) RetrieveAllMessages() ([]internal.Message, error) {
-	return s.storage.RetrieveAllMessages()
+	return s.store.RetrieveAllMessages()
 }
 
 // Shutdown queue

@@ -31,8 +31,8 @@ func NewMessageStore() (*MessageStore, error) {
 }
 
 // Close closes a connection to database
-func (c *MessageStore) Close() error {
-	return c.db.Close()
+func (s *MessageStore) Close() error {
+	return s.db.Close()
 }
 
 // Inserts message into cockroach db
@@ -55,7 +55,10 @@ func (s *MessageStore) RetrieveAllMessages() ([]internal.Message, error) {
 
 	for rows.Next() {
 		msg := internal.Message{}
-		rows.Scan(&msg.ID, &msg.Content, &msg.CreatedAt)
+		err := rows.Scan(&msg.ID, &msg.Content, &msg.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
 		msgs = append(msgs, msg)
 	}
 
