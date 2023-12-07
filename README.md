@@ -1,15 +1,6 @@
 # Description
 
-Twitter feed back end 
-Use docker-compose and any programming language
-- Implement an endpoint to add message
-- Implement an endpoint to get feed (get existing messages and stream new ones - use HTTP streaming)
-- Implement back pressure for message creation (use RabbitMQ/Kafka)
-- Use Cockroachdb(at least 2-node cluster) as a database
-- Implement a bot to generate messages (at configurable speed)
-- CRITICAL: Project must start with one command (bash file) without installing anything except docker
-
-Result is a link to a git project
+Twitter-like feed back-env.
 
 # Overview
 
